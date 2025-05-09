@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Query, Depends
+from fastapi import APIRouter, HTTPException, Query, Depends, Path
 from typing import List, Optional
 import traceback
 import logging
@@ -7,7 +7,7 @@ from beanie import PydanticObjectId
 
 from app.models.supplier import Supplier, SupplierQuery
 from app.ai.web_search import search_suppliers
-from app.ai.summarizer import summarize_suppliers
+from app.ai.summarizer import summarize_suppliers, process_search_result
 from app.models.search_result import SearchResult
 
 # Configure logger
@@ -33,17 +33,30 @@ async def query_suppliers(query: SupplierQuery):
         # Save the search result to MongoDB
         await search_result.create()
         logger.info(f"Saved search result to database with ID: {search_result.id}")
-        # Step 2: Process the search result into supplier objects
-        supplier = Supplier(
-            name=f"Search Results: {query.component} in {query.country}",
-            component_type=query.component,
-            country=query.country,
-            raw_ai_source=f"See search result with ID: {search_result.id}",
-            summary=f"This is a reference to search results for {query.component} in {query.country}. Search ID: {search_result.id}"
-        )
-        await supplier.create()
-        logger.info(f"Created placeholder supplier referencing search result")
-        return [supplier]
+        
+        # Step 2: Process the search result into structured supplier objects
+        logger.info("Step 2: Processing search results into structured supplier data")
+        from app.ai.summarizer import process_search_result
+        suppliers = await process_search_result(search_result)
+        
+        # Step 3: Save the structured suppliers to the database
+        logger.debug(f"Saving {len(suppliers)} extracted suppliers to database")
+        saved_count = 0
+        for i, supplier in enumerate(suppliers):
+            try:
+                logger.debug(f"Saving supplier {i+1}/{len(suppliers)}: {supplier.name}")
+                await supplier.create()
+                saved_count += 1
+            except Exception as save_error:
+                logger.error(f"Failed to save supplier '{supplier.name}' to database: {str(save_error)}")
+        
+        logger.info(f"Successfully saved {saved_count}/{len(suppliers)} suppliers to database")
+        
+        end_time = datetime.now()
+        duration = (end_time - start_time).total_seconds()
+        logger.info(f"Supplier discovery and processing completed in {duration} seconds")
+        
+        return suppliers
     except Exception as e:
         error_traceback = traceback.format_exc()
         logger.error(f"Error processing supplier query: {str(e)}")
@@ -95,3 +108,54 @@ async def get_suppliers(
         logger.error(f"Error retrieving suppliers: {str(e)}")
         logger.debug(f"Full traceback: {error_traceback}")
         raise HTTPException(status_code=500, detail=f"Error retrieving suppliers: {str(e)}")
+
+@router.post("/process-search/{search_id}", response_model=List[Supplier])
+async def process_search_result_by_id(search_id: str = Path(..., description="ID of the search result to process")):
+    """
+    Process a specific search result by its ID and create structured supplier objects.
+    This endpoint is useful for testing the supplier extraction and summarization independently.
+    """
+    logger.info(f"Received request to process search result with ID: {search_id}")
+    
+    try:
+        # Find the search result by ID
+        search_result = await SearchResult.get(search_id)
+        if not search_result:
+            logger.warning(f"Search result with ID {search_id} not found")
+            raise HTTPException(status_code=404, detail=f"Search result with ID {search_id} not found")
+        
+        logger.info(f"Found search result for {search_result.query_component} in {search_result.query_country}")
+        
+        # Process the search result into structured supplier objects
+        logger.info("Processing search result into structured supplier data")
+        start_time = datetime.now()
+        
+        suppliers = await process_search_result(search_result)
+        
+        end_time = datetime.now()
+        processing_duration = (end_time - start_time).total_seconds()
+        logger.info(f"Processing completed in {processing_duration} seconds, found {len(suppliers)} suppliers")
+        
+        # Save the structured suppliers to the database
+        logger.debug(f"Saving {len(suppliers)} extracted suppliers to database")
+        saved_count = 0
+        for i, supplier in enumerate(suppliers):
+            try:
+                logger.debug(f"Saving supplier {i+1}/{len(suppliers)}: {supplier.name}")
+                await supplier.create()
+                saved_count += 1
+            except Exception as save_error:
+                logger.error(f"Failed to save supplier '{supplier.name}' to database: {str(save_error)}")
+        
+        logger.info(f"Successfully saved {saved_count}/{len(suppliers)} suppliers to database")
+        
+        return suppliers
+        
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        
+        error_traceback = traceback.format_exc()
+        logger.error(f"Error processing search result: {str(e)}")
+        logger.debug(f"Full traceback: {error_traceback}")
+        raise HTTPException(status_code=500, detail=f"Error processing search result: {str(e)}")
