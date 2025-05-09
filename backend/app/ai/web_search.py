@@ -137,8 +137,23 @@ async def search_suppliers(component: str, country: str) -> SearchResult:
         duration = (end_time - start_time).total_seconds()
         logger.info(f"Claude API call completed in {duration} seconds")
         
-        # Store the full Claude response in a SearchResult instead of a Supplier
-        raw_content = json.dumps(response.model_dump())
+        # Filter the content to only include items with type 'text'
+        content_items = response.content
+        text_objects = [item for item in content_items if getattr(item, 'type', None) == 'text']
+        
+        # Create a list of text content from the filtered objects
+        text_content = []
+        for text_object in text_objects:
+            text_content.append({
+                "text": text_object.text,
+               # "citations": getattr(text_object, 'citations', [])
+            })
+            
+        logger.debug(f"Extracted {len(text_content)} text objects from Claude response")
+        
+        # Store only the filtered text content as JSON
+        raw_content = json.dumps(text_content)
+        
         search_result = SearchResult(
             query_component=component,
             query_country=country,

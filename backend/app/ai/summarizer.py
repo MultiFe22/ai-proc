@@ -45,16 +45,15 @@ async def process_search_result(search_result: SearchResult) -> List[Supplier]:
     logger.info(f"Processing search result for {search_result.query_component} in {search_result.query_country}")
     
     try:
-        # Parse the raw AI response
-        raw_response_dict = json.loads(search_result.raw_ai_response)
+        # Parse the raw AI response which now contains only text objects
+        text_objects = json.loads(search_result.raw_ai_response)
         
-        # Extract text content from the response
+        # Extract text content from the filtered text objects
         text_content = ""
-        for item in raw_response_dict.get('content', []):
-            if item.get('type') == 'text':
-                text_content += item.get('text', '')
+        for text_obj in text_objects:
+            text_content += text_obj.get("text", "")
         
-        logger.debug(f"Extracted {len(text_content)} characters of text content")
+        logger.debug(f"Extracted {len(text_content)} characters of text content from {len(text_objects)} text objects")
 
         # Define tools for Claude to extract supplier information
         tools = [
@@ -131,7 +130,7 @@ async def process_search_result(search_result: SearchResult) -> List[Supplier]:
         start_time = datetime.now()
         
         response = anthropic_client.messages.create(
-            model="claude-3-5-sonnet-20240620",
+            model="claude-3-5-haiku-20241022",
             max_tokens=4000,
             temperature=0.1,  # Low temperature for accurate information extraction
             tools=tools,
