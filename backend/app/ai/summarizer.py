@@ -35,6 +35,7 @@ async def process_search_result(search_result: SearchResult) -> List[Supplier]:
     """
     Process a raw search result from Claude's web search into structured supplier objects.
     Uses Claude with function calling to extract and structure the supplier information.
+    Now uses a single tool call that accepts an array of suppliers.
     
     Args:
         search_result: The SearchResult object containing raw Claude response
@@ -55,49 +56,59 @@ async def process_search_result(search_result: SearchResult) -> List[Supplier]:
         
         logger.debug(f"Extracted {len(text_content)} characters of text content from {len(text_objects)} text objects")
 
-        # Define tools for Claude to extract supplier information
+        # Define tool that accepts an array of suppliers in a single call
         tools = [
             {
-                "name": "create_supplier",
-                "description": "Create a structured supplier object from extracted information",
+                "name": "create_suppliers",
+                "description": "Create multiple structured supplier objects from extracted information",
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "name": {
-                            "type": "string",
-                            "description": "The name of the supplier company"
-                        },
-                        "website": {
-                            "type": "string",
-                            "description": "The website URL of the supplier (without http:// or https://)"
-                        },
-                        "location": {
-                            "type": "string",
-                            "description": "The headquarters location or primary address of the supplier"
-                        },
-                        "product": {
-                            "type": "string",
-                            "description": "Description of the supplier's products relevant to the search"
-                        },
-                        "lead_time_days": {
-                            "type": "integer",
-                            "description": "Typical lead time in days (numeric only)"
-                        },
-                        "min_order_qty": {
-                            "type": "integer",
-                            "description": "Minimum order quantity (numeric only)"
-                        },
-                        "certifications": {
+                        "suppliers": {
                             "type": "array",
-                            "items": {"type": "string"},
-                            "description": "List of certifications held by the supplier"
-                        },
-                        "summary": {
-                            "type": "string",
-                            "description": "A concise summary of the supplier's strengths, weaknesses, and fit"
+                            "description": "Array of supplier objects extracted from the research data",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "description": "The name of the supplier company"
+                                    },
+                                    "website": {
+                                        "type": "string",
+                                        "description": "The website URL of the supplier (without http:// or https://)"
+                                    },
+                                    "location": {
+                                        "type": "string",
+                                        "description": "The headquarters location or primary address of the supplier"
+                                    },
+                                    "product": {
+                                        "type": "string",
+                                        "description": "Description of the supplier's products relevant to the search"
+                                    },
+                                    "lead_time_days": {
+                                        "type": "integer",
+                                        "description": "Typical lead time in days (numeric only)"
+                                    },
+                                    "min_order_qty": {
+                                        "type": "integer",
+                                        "description": "Minimum order quantity (numeric only)"
+                                    },
+                                    "certifications": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                        "description": "List of certifications held by the supplier"
+                                    },
+                                    "summary": {
+                                        "type": "string",
+                                        "description": "A concise summary of the supplier's strengths, weaknesses, and fit"
+                                    }
+                                },
+                                "required": ["name"]
+                            }
                         }
                     },
-                    "required": ["name"]
+                    "required": ["suppliers"]
                 }
             }
         ]
@@ -110,28 +121,29 @@ async def process_search_result(search_result: SearchResult) -> List[Supplier]:
         
         Your task is to:
         1. Carefully analyze the research data
-        2. Identify distinct suppliers mentioned in the data
-        3. For each supplier, extract key information and create a structured supplier profile using the create_supplier tool
-        4. Include a concise 2-3 paragraph summary for each supplier highlighting their strengths, weaknesses, and fit for procurement
+        2. Identify all distinct suppliers mentioned in the data
+        3. Extract key information for each supplier
+        4. Call the create_suppliers tool ONCE with an array containing all identified suppliers
+        5. Include a concise 2-3 paragraph summary for each supplier highlighting their strengths, weaknesses, and fit for procurement
         
         Make sure to:
-        - Create a separate supplier entry for each distinct company mentioned
+        - Include every distinct supplier mentioned in the research
         - Extract as much information as possible for each field
         - Ensure accuracy of all data and don't fabricate information
         - For numeric fields (lead_time_days, min_order_qty), extract only the numbers
         - For website URLs, exclude http:// and https:// prefixes
         - Include specific certifications mentioned (ISO, CE, etc.)
 
-        Important: Call the create_supplier tool for EACH unique supplier you identify in the data.
+        Important: Make only ONE call to the create_suppliers tool with ALL suppliers in a single array.
         """
         
-        # First call to Claude with tool definition
-        logger.debug("Making first call to Claude with tools to extract supplier information")
+        # Call to Claude with tool definition
+        logger.debug("Making call to Claude with tool to extract multiple suppliers in one call")
         start_time = datetime.now()
         
         response = anthropic_client.messages.create(
             model="claude-3-5-haiku-20241022",
-            max_tokens=4000,
+            max_tokens=8000,
             temperature=0.1,  # Low temperature for accurate information extraction
             tools=tools,
             messages=[
@@ -149,40 +161,40 @@ async def process_search_result(search_result: SearchResult) -> List[Supplier]:
         # Process the response
         suppliers = []
         
-        tool_outputs = []
         content_items = response.content
         text_output = ""
         
-        # Check if Claude used the tool and identify tool_use items
-        for i, item in enumerate(content_items):
+        # Check for the tool call with multiple suppliers
+        for item in content_items:
             if getattr(item, 'type', None) == 'text':
                 text_output += getattr(item, 'text', '')
-            elif getattr(item, 'type', None) == 'tool_use':
-                logger.debug(f"Found tool_use item: {getattr(item, 'name', 'unknown')}")
-                if getattr(item, 'name', None) == 'create_supplier':
-                    tool_input = getattr(item, 'input', {})
-                    logger.debug(f"Processing supplier: {tool_input.get('name', 'Unknown')}")
+            elif getattr(item, 'type', None) == 'tool_use' and getattr(item, 'name', None) == 'create_suppliers':
+                logger.debug(f"Found create_suppliers tool call")
+                tool_input = getattr(item, 'input', {})
+                supplier_list = tool_input.get('suppliers', [])
+                
+                logger.info(f"Extracted {len(supplier_list)} suppliers in a single tool call")
+                
+                # Process each supplier in the array
+                for i, supplier_data in enumerate(supplier_list):
+                    logger.debug(f"Processing supplier {i+1}/{len(supplier_list)}: {supplier_data.get('name', 'Unknown')}")
                     
                     supplier = Supplier(
-                        name=tool_input.get('name', 'Unknown'),
-                        website=tool_input.get('website'),
-                        location=tool_input.get('location'),
-                        product=tool_input.get('product'),
+                        name=supplier_data.get('name', 'Unknown'),
+                        website=supplier_data.get('website'),
+                        location=supplier_data.get('location'),
+                        product=supplier_data.get('product'),
                         component_type=search_result.query_component,
                         country=search_result.query_country,
-                        lead_time_days=tool_input.get('lead_time_days'),
-                        min_order_qty=tool_input.get('min_order_qty'),
-                        certifications=tool_input.get('certifications', []),
-                        raw_ai_source=json.dumps(tool_input),
-                        summary=tool_input.get('summary')
+                        lead_time_days=supplier_data.get('lead_time_days'),
+                        min_order_qty=supplier_data.get('min_order_qty'),
+                        certifications=supplier_data.get('certifications', []),
+                        raw_ai_source=json.dumps(supplier_data),
+                        summary=supplier_data.get('summary')
                     )
                     suppliers.append(supplier)
-                    tool_outputs.append({
-                        'tool_use_id': getattr(item, 'id', None),
-                        'result': f"Successfully created supplier: {supplier.name}"
-                    })
         
-        # If Claude didn't find any suppliers using the tool, create a fallback supplier
+        # If Claude didn't find any suppliers, create a fallback supplier
         if not suppliers:
             logger.warning("No suppliers identified using Claude's function calling, using fallback")
             fallback_supplier = Supplier(
