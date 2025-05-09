@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 import logging
 
 from app.models.supplier import Supplier
+from app.models.search_result import SearchResult
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -29,10 +30,10 @@ except Exception as e:
     logger.error(f"Failed to initialize Anthropic client: {str(e)}")
     raise e
 
-async def search_suppliers(component: str, country: str) -> List[Supplier]:
+async def search_suppliers(component: str, country: str) -> SearchResult:
     """
-    Use Claude with web search capability to find suppliers based on components and country
-    and parse the results into structured data with procurement specialist insights.
+    Use Claude with web search capability to find suppliers based on components and country.
+    Store the raw Claude response in a SearchResult object for later processing.
     """
     logger.info(f"Starting supplier search for component: '{component}' in country: '{country}'")
     
@@ -136,47 +137,15 @@ async def search_suppliers(component: str, country: str) -> List[Supplier]:
         duration = (end_time - start_time).total_seconds()
         logger.info(f"Claude API call completed in {duration} seconds")
         
-        # Extract the response content - UPDATED to handle the complex JSON structure
-        content_items = response.content
-        text_content = ""
-        web_search_results = []
-        thinking_content = ""
-        
-        # Process different content types according to the expected JSON structure
-        logger.debug(f"Processing {len(content_items)} content items from Claude API response")
-        
-        for item in content_items:
-            if item.type == "text":
-                text_content += item.text
-                logger.debug(f"Found text content, length: {len(item.text)} characters")
-            elif item.type == "thinking":
-                thinking_content += item.thinking
-                logger.debug(f"Found thinking content, length: {len(item.thinking)} characters")
-            elif item.type == "web_search_tool_result":
-                logger.debug(f"Found web search tool result with ID: {item.tool_use_id}")
-                web_search_results.extend(item.content)
-        
-        # Log information about what we found
-        logger.info(f"Extracted {len(text_content)} chars of text, {len(web_search_results)} web results")
-        
-        # Response length check focuses on the main text content
-        response_length = len(text_content)
-        if response_length < 500:
-            logger.warning(f"Claude API text response is suspiciously short: {text_content}")
-        
-        # Create rich response combining all content types for processing
-        rich_response = {
-            "text": text_content,
-            "web_search_results": web_search_results,
-            "thinking": thinking_content
-        }
-        
-        # Process the response into structured supplier data
-        logger.info("Parsing Claude response into supplier objects")
-        suppliers = parse_claude_response(text_content, component, country, rich_response)
-        
-        logger.info(f"Found {len(suppliers)} suppliers for {component} in {country}")
-        return suppliers
+        # Store the full Claude response in a SearchResult instead of a Supplier
+        raw_content = json.dumps(response.model_dump())
+        search_result = SearchResult(
+            query_component=component,
+            query_country=country,
+            raw_ai_response=raw_content
+        )
+        logger.info(f"Created SearchResult for {component} in {country}")
+        return search_result
             
     except Exception as e:
         error_traceback = traceback.format_exc()

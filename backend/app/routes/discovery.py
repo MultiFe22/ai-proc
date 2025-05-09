@@ -8,6 +8,7 @@ from beanie import PydanticObjectId
 from app.models.supplier import Supplier, SupplierQuery
 from app.ai.web_search import search_suppliers
 from app.ai.summarizer import summarize_suppliers
+from app.models.search_result import SearchResult
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -22,57 +23,27 @@ async def query_suppliers(query: SupplierQuery):
     """
     start_time = datetime.now()
     logger.info(f"Received supplier query request - component: '{query.component}', country: '{query.country}'")
-    
     try:
-        # Step 1: Use AI to search for suppliers
+        # Step 1: Use AI to search for suppliers and save the raw results
         logger.info("Step 1: Starting AI-powered supplier search")
-        suppliers = await search_suppliers(
+        search_result = await search_suppliers(
             component=query.component, 
             country=query.country
         )
-        logger.info(f"AI search completed, found {len(suppliers)} potential suppliers")
-        
-        # Save raw entries to MongoDB
-        logger.debug("Saving raw supplier entries to MongoDB")
-        saved_count = 0
-        for i, supplier in enumerate(suppliers):
-            logger.debug(f"Saving supplier {i+1}/{len(suppliers)}: {supplier.name}")
-            try:
-                await supplier.create()
-                saved_count += 1
-            except Exception as db_error:
-                logger.error(f"Failed to save supplier '{supplier.name}' to database: {str(db_error)}")
-        
-        logger.info(f"Successfully saved {saved_count}/{len(suppliers)} suppliers to database")
-        
-        # Step 2: Generate summaries for the suppliers
-        logger.info("Step 2: Generating AI summaries for suppliers")
-        try:
-            suppliers = await summarize_suppliers(suppliers)
-            logger.info(f"Summary generation completed for {len(suppliers)} suppliers")
-        except Exception as summary_error:
-            logger.error(f"Error during summary generation: {str(summary_error)}")
-            logger.debug(f"Will continue with unsummarized suppliers")
-        
-        # Update the suppliers with summaries
-        logger.debug("Updating suppliers with summaries in database")
-        update_count = 0
-        for i, supplier in enumerate(suppliers):
-            try:
-                logger.debug(f"Updating supplier {i+1}/{len(suppliers)}: {supplier.name}")
-                await supplier.save()
-                update_count += 1
-            except Exception as update_error:
-                logger.error(f"Failed to update supplier '{supplier.name}' with summary: {str(update_error)}")
-        
-        logger.info(f"Successfully updated {update_count}/{len(suppliers)} suppliers with summaries")
-        
-        end_time = datetime.now()
-        duration = (end_time - start_time).total_seconds()
-        logger.info(f"Supplier discovery completed in {duration} seconds")
-        
-        return suppliers
-        
+        # Save the search result to MongoDB
+        await search_result.create()
+        logger.info(f"Saved search result to database with ID: {search_result.id}")
+        # Step 2: Process the search result into supplier objects
+        supplier = Supplier(
+            name=f"Search Results: {query.component} in {query.country}",
+            component_type=query.component,
+            country=query.country,
+            raw_ai_source=f"See search result with ID: {search_result.id}",
+            summary=f"This is a reference to search results for {query.component} in {query.country}. Search ID: {search_result.id}"
+        )
+        await supplier.create()
+        logger.info(f"Created placeholder supplier referencing search result")
+        return [supplier]
     except Exception as e:
         error_traceback = traceback.format_exc()
         logger.error(f"Error processing supplier query: {str(e)}")
