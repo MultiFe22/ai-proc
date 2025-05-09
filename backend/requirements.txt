@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+beanie
+motor
+python-dotenv
+httpx
+anthropic
+openai
+python-multipart
+email-validator
+pydantic
