@@ -229,12 +229,3 @@ async def process_search_result(search_result: SearchResult) -> List[Supplier]:
         )
         
         return [fallback_supplier]
-
-async def summarize_suppliers(suppliers: List[Supplier]) -> List[Supplier]:
-    """
-    Legacy method - maintained for backward compatibility.
-    This now simply processes the supplied list and returns it.
-    For new code, use process_search_result() instead.
-    """
-    logger.info("Using legacy summarize_suppliers method")
-    return suppliers

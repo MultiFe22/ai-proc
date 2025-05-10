@@ -7,7 +7,7 @@ from beanie import PydanticObjectId
 
 from app.models.supplier import Supplier, SupplierQuery
 from app.ai.web_search import search_suppliers
-from app.ai.summarizer import summarize_suppliers, process_search_result
+from app.ai.summarizer import process_search_result
 from app.models.search_result import SearchResult
 
 # Configure logger
