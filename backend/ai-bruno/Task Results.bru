@@ -1,0 +1,15 @@
+meta {
+  name: Task Results
+  type: http
+  seq: 4
+}
+
+get {
+  url: http://localhost:8000/discovery/tasks/:id/results
+  body: none
+  auth: inherit
+}
+
+params:path {
+  id: 
+}

@@ -1,0 +1,19 @@
+meta {
+  name: Query Async
+  type: http
+  seq: 2
+}
+
+post {
+  url: http://localhost:8000/discovery/query/async
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {"component":"carbon steel sheets","country":"brazil"}
+}
