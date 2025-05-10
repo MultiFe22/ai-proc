@@ -12,6 +12,8 @@ This API utilizes Claude's advanced web search capabilities to conduct comprehen
 - **Structured Supplier Data**: Extract detailed information about suppliers including contact information, product specifications, and business metrics
 - **Procurement Insights**: Get AI-generated summaries and evaluations of suppliers' strengths and weaknesses
 - **Data Persistence**: Store search results and supplier information in MongoDB for future reference
+- **Asynchronous Processing**: Submit long-running supplier search requests that can take several minutes without blocking the client
+- **Task Status Tracking**: Monitor the progress of supplier discovery tasks in real-time
 
 ## Tech Stack
 
@@ -84,12 +86,30 @@ The API will be available at `http://localhost:8000`.
 - `GET /`: Verify the API is running
 
 #### Supplier Discovery
-- `POST /discovery/query`: Search for suppliers based on component and country
+- `POST /discovery/query`: Search for suppliers based on component and country (synchronous)
   ```json
   {
     "component": "carbon steel sheets",
     "country": "Germany"
   }
+  ```
+
+- `POST /discovery/query/async`: Start an asynchronous search for suppliers (returns immediately with a task ID)
+  ```json
+  {
+    "component": "carbon steel sheets",
+    "country": "Germany"
+  }
+  ```
+
+- `GET /discovery/tasks/{task_id}`: Check the status of an asynchronous supplier search task
+  ```
+  /discovery/tasks/6458723ab1c88e9f3a1d5e02
+  ```
+
+- `GET /discovery/tasks/{task_id}/results`: Get the results of a completed supplier search task
+  ```
+  /discovery/tasks/6458723ab1c88e9f3a1d5e02/results
   ```
 
 - `GET /discovery/results`: Retrieve stored suppliers with optional filtering
@@ -127,6 +147,19 @@ Structured supplier information:
 - `summary`: AI-generated evaluation summary
 - `raw_ai_source`: Source data for this supplier
 
+### SupplierTask
+
+Tracks the status of asynchronous supplier search operations:
+
+- `component`: Component being searched for
+- `country`: Country being searched in
+- `status`: Current status of the task (queued, processing, completed, failed)
+- `message`: Human-readable description of current task status/progress
+- `search_result_id`: Reference to the associated search result
+- `supplier_count`: Number of suppliers extracted (when complete)
+- `started_at`: When the task was created
+- `completed_at`: When the task finished (successfully or with failure)
+
 ## Development
 
 ### Debug Tools
@@ -142,6 +175,15 @@ jupyter notebook debug_web_search.ipynb
 2. **Text Processing**: The raw search results are stored as `SearchResult` objects
 3. **Supplier Extraction**: Claude processes the search results to extract structured supplier data
 4. **Data Storage**: The structured supplier information is stored in MongoDB
+5. **Asynchronous Processing**: Long-running supplier searches run in the background while clients can check progress
+
+### Async Search Flow
+
+1. Client submits a supplier search request via `/discovery/query/async`
+2. Server immediately creates and returns a task object with status "queued"
+3. Background process starts executing the supplier search
+4. Client polls the task status using `/discovery/tasks/{task_id}`
+5. When task status becomes "completed", client retrieves results via `/discovery/tasks/{task_id}/results`
 
 ## License
 

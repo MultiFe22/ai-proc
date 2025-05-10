@@ -7,6 +7,7 @@ import logging
 
 from app.models.supplier import Supplier
 from app.models.search_result import SearchResult
+from app.models.task import SupplierTask
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -51,9 +52,9 @@ async def init_db():
         await client.admin.command('ping')
         logger.info("Successfully connected to MongoDB")
         
-        # Initialize Beanie with both document models
-        logger.debug(f"Initializing Beanie with document models: {[Supplier.__name__, SearchResult.__name__]}")
-        await init_beanie(database=client[db_name], document_models=[Supplier, SearchResult])
+        # Initialize Beanie with all document models
+        logger.debug(f"Initializing Beanie with document models: {[Supplier.__name__, SearchResult.__name__, SupplierTask.__name__]}")
+        await init_beanie(database=client[db_name], document_models=[Supplier, SearchResult, SupplierTask])
         logger.info("Beanie initialization complete")
         
     except Exception as e:
