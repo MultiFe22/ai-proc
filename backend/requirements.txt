@@ -9,3 +9,5 @@ openai
 python-multipart
 email-validator
 pydantic
+celery
+redis

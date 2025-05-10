@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Query, Depends, Path, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Query, Depends, Path
 from typing import List, Optional
 import traceback
 import logging
@@ -10,6 +10,7 @@ from app.models.search_result import SearchResult
 from app.models.task import SupplierTask, TaskStatus
 from app.ai.web_search import search_suppliers
 from app.ai.summarizer import process_search_result
+from app.worker import process_supplier_query  # Import Celery task
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -65,7 +66,7 @@ async def query_suppliers(query: SupplierQuery):
         raise HTTPException(status_code=500, detail=f"Error processing supplier query: {str(e)}")
 
 @router.post("/query/async", response_model=SupplierTask)
-async def async_query_suppliers(query: SupplierQuery, background_tasks: BackgroundTasks):
+async def async_query_suppliers(query: SupplierQuery):
     """
     Asynchronously search for suppliers based on component and country using AI.
     Returns a task that can be used to check status and retrieve results when ready.
@@ -81,15 +82,14 @@ async def async_query_suppliers(query: SupplierQuery, background_tasks: Backgrou
     )
     await task.create()
     
-    # Start the background task
-    background_tasks.add_task(
-        process_supplier_query_task, 
-        task_id=str(task.id),
-        component=query.component,
-        country=query.country
+    # Start the Celery task
+    process_supplier_query.delay(
+        str(task.id),
+        query.component, 
+        query.country
     )
     
-    logger.info(f"Created task {task.id} for async supplier query")
+    logger.info(f"Created task {task.id} for async supplier query and dispatched to Celery")
     return task
 
 @router.get("/tasks/{task_id}", response_model=SupplierTask)
@@ -98,10 +98,13 @@ async def get_task_status(task_id: str):
     Check the status of an asynchronous supplier query task.
     """
     try:
-        task = await SupplierTask.get(task_id)
+        task_object_id = PydanticObjectId(task_id)
+        task = await SupplierTask.get(task_object_id)
         if not task:
             raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
         return task
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid task ID format: {task_id}")
     except Exception as e:
         logger.error(f"Error retrieving task {task_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error retrieving task: {str(e)}")
@@ -112,7 +115,11 @@ async def get_task_results(task_id: str):
     Get the results of a completed supplier query task.
     """
     try:
-        task = await SupplierTask.get(task_id)
+        # Convert task_id to PydanticObjectId
+        task_object_id = PydanticObjectId(task_id)
+        
+        # Find the task by ID
+        task = await SupplierTask.get(task_object_id)
         if not task:
             raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
             
@@ -122,77 +129,22 @@ async def get_task_results(task_id: str):
                 detail=f"Task is not completed yet. Current status: {task.status}, message: {task.message}"
             )
         
-               # Get suppliers associated with this task's search
+        # Get suppliers associated with this task's search
         suppliers = await Supplier.find(
             {"component_type": task.component, "country": task.country}
-        ).sort(("created_at", -1)).limit(task.supplier_count or 100).to_list()
+        ).sort("created_at", -1).limit(task.supplier_count or 100).to_list()
+        
         if not suppliers:
             logger.warning(f"No suppliers found for completed task {task_id}")
         
         return suppliers
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid task ID format: {task_id}")
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error retrieving results for task {task_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error retrieving results: {str(e)}")
-
-async def process_supplier_query_task(task_id: str, component: str, country: str):
-    """
-    Background task to process a supplier query asynchronously.
-    Updates the task status as it progresses.
-    """
-    logger.info(f"Starting background processing for task {task_id}")
-    
-    task = await SupplierTask.get(task_id)
-    if not task:
-        logger.error(f"Task {task_id} not found for processing")
-        return
-        
-    try:
-        # Update status to processing
-        task.status = TaskStatus.PROCESSING
-        task.message = "Starting supplier search with Claude AI..."
-        await task.save()
-        
-        # Step 1: Use AI to search for suppliers
-        search_result = await search_suppliers(component=component, country=country)
-        await search_result.create()
-        
-        # Update task with search result ID
-        task.search_result_id = search_result.id
-        task.message = "Web search completed, extracting supplier information..."
-        await task.save()
-        
-        # Step 2: Process search results into structured suppliers
-        suppliers = await process_search_result(search_result)
-        
-        # Step 3: Save suppliers to database
-        saved_count = 0
-        for supplier in suppliers:
-            try:
-                await supplier.create()
-                saved_count += 1
-            except Exception as save_error:
-                logger.error(f"Failed to save supplier '{supplier.name}' to database: {str(save_error)}")
-        
-        # Mark task as completed
-        task.status = TaskStatus.COMPLETED
-        task.message = f"Task completed successfully. Found {len(suppliers)} suppliers, saved {saved_count}."
-        task.supplier_count = saved_count
-        task.completed_at = datetime.now()
-        await task.save()
-        
-        logger.info(f"Task {task_id} completed successfully. Processed {len(suppliers)} suppliers.")
-        
-    except Exception as e:
-        error_traceback = traceback.format_exc()
-        logger.error(f"Error processing task {task_id}: {str(e)}")
-        logger.debug(f"Full traceback: {error_traceback}")
-        
-        task.status = TaskStatus.FAILED
-        task.message = f"Failed: {str(e)}"
-        task.completed_at = datetime.now()
-        await task.save()
 
 @router.get("/results", response_model=List[Supplier])
 async def get_suppliers(
