@@ -12,13 +12,15 @@ This API utilizes Claude's advanced web search capabilities to conduct comprehen
 - **Structured Supplier Data**: Extract detailed information about suppliers including contact information, product specifications, and business metrics
 - **Procurement Insights**: Get AI-generated summaries and evaluations of suppliers' strengths and weaknesses
 - **Data Persistence**: Store search results and supplier information in MongoDB for future reference
-- **Asynchronous Processing**: Submit long-running supplier search requests that can take several minutes without blocking the client
+- **Asynchronous Processing**: Submit long-running supplier search requests using Celery for background task processing
 - **Task Status Tracking**: Monitor the progress of supplier discovery tasks in real-time
 
 ## Tech Stack
 
 - **FastAPI**: High-performance API framework
 - **MongoDB** (with Beanie ODM): NoSQL database for storing search results and supplier information
+- **Celery**: Distributed task queue for background processing
+- **Redis**: Message broker for Celery tasks
 - **Claude AI API**: Anthropic's Claude large language model with web search capabilities
 - **Python 3.8+**: Core programming language
 
@@ -28,6 +30,8 @@ This API utilizes Claude's advanced web search capabilities to conduct comprehen
 
 - Python 3.8 or higher
 - MongoDB instance (local or remote)
+- Redis (for Celery task queue)
+- Docker (recommended for running Redis)
 - Anthropic API key for Claude
 
 ### Setup
@@ -57,26 +61,47 @@ This API utilizes Claude's advanced web search capabilities to conduct comprehen
    MONGODB_HOST=localhost
    MONGODB_PORT=27017
    MONGODB_DB_NAME=procurement_assistant
+   REDIS_URL=redis://localhost:6379/0
    ```
 
-5. Initialize the database:
+5. Create a `celery.env` file for Celery worker:
+   ```
+   ANTHROPIC_API_KEY=your_claude_api_key
+   REDIS_URL=redis://localhost:6379/0
+   ```
+
+6. Initialize the database:
    ```bash
    ./init_db.sh
    ```
 
+7. Start Redis container for Celery broker:
+   ```bash
+   ./start_redis.sh
+   ```
+
 ## Usage
 
-### Starting the Server
+### Starting the Services
 
-Run the API server:
-```bash
-python -m app.main
-```
+1. Start the Redis server (if not already running):
+   ```bash
+   ./start_redis.sh
+   ```
 
-Or use the setup script:
-```bash
-./setup.sh
-```
+2. Start the Celery worker in a separate terminal:
+   ```bash
+   ./start_celery.sh
+   ```
+
+3. Run the API server in another terminal:
+   ```bash
+   python -m app.main
+   ```
+   Or use the setup script:
+   ```bash
+   ./setup.sh
+   ```
 
 The API will be available at `http://localhost:8000`.
 
@@ -116,8 +141,6 @@ The API will be available at `http://localhost:8000`.
   ```
   /discovery/results?component=carbon%20steel%20sheets&country=Germany
   ```
-
-- `POST /discovery/process-search/{search_id}`: Process a specific search result into structured supplier data
 
 ## Data Models
 
@@ -160,6 +183,32 @@ Tracks the status of asynchronous supplier search operations:
 - `started_at`: When the task was created
 - `completed_at`: When the task finished (successfully or with failure)
 
+## Architecture
+
+1. **Web Search**: Claude searches for suppliers based on component and country
+2. **Text Processing**: The raw search results are stored as `SearchResult` objects
+3. **Supplier Extraction**: Claude processes the search results to extract structured supplier data
+4. **Data Storage**: The structured supplier information is stored in MongoDB
+5. **Asynchronous Processing**: Long-running supplier searches run in the background using Celery workers
+
+### Async Search Flow
+
+1. Client submits a supplier search request via `/discovery/query/async`
+2. Server immediately creates a SupplierTask with status "queued" and returns it
+3. A Celery task is dispatched to process the supplier query asynchronously
+4. Client polls the task status using `/discovery/tasks/{task_id}`
+5. When task status becomes "completed", client retrieves results via `/discovery/tasks/{task_id}/results`
+
+### Celery Worker System
+
+The application uses Celery with Redis as the message broker to handle asynchronous tasks:
+
+1. **Task Dispatch**: FastAPI routes dispatch Celery tasks and return task IDs to clients
+2. **Worker Processing**: Dedicated Celery workers process tasks independently from the web server
+3. **Task Monitoring**: Tasks can be monitored through the FastAPI endpoints
+4. **Error Handling**: Automatic retries for transient failures like API timeouts
+5. **Scalability**: Multiple workers can be deployed to handle higher loads
+
 ## Development
 
 ### Debug Tools
@@ -169,21 +218,14 @@ The project includes a Jupyter notebook for debugging Claude's web search functi
 jupyter notebook debug_web_search.ipynb
 ```
 
-## Architecture
+### Troubleshooting Celery Workers
 
-1. **Web Search**: Claude searches for suppliers based on component and country
-2. **Text Processing**: The raw search results are stored as `SearchResult` objects
-3. **Supplier Extraction**: Claude processes the search results to extract structured supplier data
-4. **Data Storage**: The structured supplier information is stored in MongoDB
-5. **Asynchronous Processing**: Long-running supplier searches run in the background while clients can check progress
+If you encounter issues with Celery workers:
 
-### Async Search Flow
-
-1. Client submits a supplier search request via `/discovery/query/async`
-2. Server immediately creates and returns a task object with status "queued"
-3. Background process starts executing the supplier search
-4. Client polls the task status using `/discovery/tasks/{task_id}`
-5. When task status becomes "completed", client retrieves results via `/discovery/tasks/{task_id}/results`
+1. Check the `worker.log` file for error details
+2. Ensure Redis is running (`./start_redis.sh`)
+3. Verify your `celery.env` file has the correct API key
+4. Restart the Celery worker (`./start_celery.sh`)
 
 ## License
 
