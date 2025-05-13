@@ -1,4 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { FuturisticBackground } from './components/FuturisticBackground';
+import { FuturisticInput } from './components/FuturisticInput';
+import { FuturisticButton } from './components/FuturisticButton';
+import { SupplierResults } from './components/SupplierResults';
 
 export default function Discovery() {
   const [component, setComponent] = useState('');
@@ -6,6 +11,7 @@ export default function Discovery() {
   const [isLoading, setIsLoading] = useState(false);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [summary, setSummary] = useState<string>('');
+  const [showResults, setShowResults] = useState(false);
 
   const fetchSuppliers = async (component: string, country: string) => {
     try {
@@ -25,6 +31,7 @@ export default function Discovery() {
       const resultsData = await resultsRes.json();
       setSuppliers(resultsData.suppliers || []);
       setSummary(resultsData.summary || '');
+      setShowResults(true);
     } catch (error) {
       console.error('Failed to fetch suppliers:', error);
     }
@@ -37,48 +44,127 @@ export default function Discovery() {
     setIsLoading(false);
   };
 
+  useEffect(() => {
+    // Reset showResults when form inputs change
+    if (showResults) {
+      setShowResults(false);
+    }
+  }, [component, country]);
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 py-12">
-      <div className="max-w-md w-full text-center">
-        <h1 className="text-4xl font-bold text-gray-800 mb-4">What are you sourcing today?</h1>
-        <p className="text-lg text-gray-600 mb-10">
-          Tell us the component and country — we’ll find suppliers for you.
-        </p>
-        <form onSubmit={handleSubmit} className="bg-white p-8 rounded-lg shadow-md space-y-6">
-          <div>
-            <label htmlFor="component" className="block text-sm font-medium text-gray-700 mb-1">
-              Component
-            </label>
-            <input
-              id="component"
-              type="text"
-              className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none"
-              placeholder="Enter component name"
-              value={component}
-              onChange={(e) => setComponent(e.target.value)}
-            />
+    <div className="min-h-screen text-white overflow-hidden">
+      {/* Futuristic animated background */}
+      <FuturisticBackground />
+      
+      {/* Content overlay */}
+      <div className="relative z-10 min-h-screen flex flex-col items-center justify-center px-4 py-12">
+        <motion.div 
+          className="max-w-md w-full"
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, ease: "easeOut" }}
+        >
+          {/* Header */}
+          <div className="text-center mb-10">
+            <motion.div
+              className="mb-2 inline-block"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.5, delay: 0.2 }}
+            >
+              <svg className="w-16 h-16 mx-auto mb-4 text-cyan-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+              </svg>
+            </motion.div>
+            
+            <motion.h1 
+              className="text-4xl font-light mb-2 text-gradient"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.8, delay: 0.4 }}
+            >
+              What are you sourcing today?
+            </motion.h1>
+            
+            <motion.p 
+              className="text-lg text-gray-300"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.8, delay: 0.6 }}
+            >
+              Tell us the component and country — we'll find suppliers for you.
+            </motion.p>
           </div>
-          <div>
-            <label htmlFor="country" className="block text-sm font-medium text-gray-700 mb-1">
-              Country
-            </label>
-            <input
-              id="country"
-              type="text"
-              className="w-full px-4 py-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:outline-none"
-              placeholder="Enter country"
-              value={country}
-              onChange={(e) => setCountry(e.target.value)}
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-md shadow-sm disabled:opacity-70 disabled:cursor-not-allowed transition-colors"
+          
+          {/* Form */}
+          <motion.div
+            className="backdrop-blur-lg bg-black/20 p-8 rounded-2xl border border-gray-700/40 shadow-xl"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.8 }}
           >
-            {isLoading ? 'Loading...' : 'Find Suppliers'}
-          </button>
-        </form>
+            <form onSubmit={handleSubmit}>
+              <FuturisticInput
+                id="component"
+                label="Component"
+                value={component}
+                onChange={(e) => setComponent(e.target.value)}
+                placeholder="Enter component name"
+              />
+              
+              <FuturisticInput
+                id="country"
+                label="Country"
+                value={country}
+                onChange={(e) => setCountry(e.target.value)}
+                placeholder="Enter country"
+              />
+              
+              <motion.div 
+                className="mt-8"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 1.0 }}
+              >
+                <FuturisticButton 
+                  type="submit" 
+                  disabled={isLoading} 
+                  isLoading={isLoading}
+                >
+                  {isLoading ? 'Searching...' : 'Find Suppliers'}
+                </FuturisticButton>
+              </motion.div>
+            </form>
+          </motion.div>
+          
+          {/* Results */}
+          <AnimatePresence>
+            {showResults && (
+              <motion.div
+                key="results"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.5 }}
+              >
+                <SupplierResults 
+                  suppliers={suppliers} 
+                  summary={summary} 
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.div>
+        
+        {/* Footer attribution */}
+        <motion.div 
+          className="absolute bottom-4 text-xs text-gray-500"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 0.7 }}
+          transition={{ delay: 1.5 }}
+        >
+          Powered by AI Sourcing Technology
+        </motion.div>
       </div>
     </div>
   );
