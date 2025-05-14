@@ -132,7 +132,7 @@ async def get_task_results(task_id: str):
         # Get suppliers associated with this task's search
         suppliers = await Supplier.find(
             {"component_type": task.component, "country": task.country}
-        ).sort("created_at", -1).limit(task.supplier_count or 100).to_list()
+        ).sort(("created_at", -1)).limit(task.supplier_count or 100).to_list()
         
         if not suppliers:
             logger.warning(f"No suppliers found for completed task {task_id}")
