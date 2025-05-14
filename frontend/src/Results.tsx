@@ -11,6 +11,17 @@ export default function Results() {
   const [summary, setSummary] = useState('');
   const [query, setQuery] = useState<{ component: string, country: string }>({ component: '', country: '' });
   const [isLoaded, setIsLoaded] = useState(false);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  
+  // Add scroll listener to show/hide back to top button
+  useEffect(() => {
+    const handleScroll = () => {
+      setShowScrollTop(window.scrollY > 500);
+    };
+    
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
   
   useEffect(() => {
     // Get data from sessionStorage
@@ -74,16 +85,38 @@ export default function Results() {
             animate={{ opacity: 1 }}
             transition={{ delay: 0.5 }}
           >
-            <h2 className="text-xl mb-2 text-cyan-300">Search Query</h2>
-            <div className="grid grid-cols-2 gap-4">
+            <h2 className="text-xl mb-3 text-cyan-300">Search Query</h2>
+            <div className="grid grid-cols-2 gap-6">
               <div>
-                <p className="text-gray-400 text-sm">Component</p>
-                <p className="text-lg">{query.component}</p>
+                <div className="flex items-center mb-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                  </svg>
+                  <p className="text-gray-300 text-sm font-medium">Component</p>
+                </div>
+                <p className="text-lg ml-7">{query.component}</p>
               </div>
               <div>
-                <p className="text-gray-400 text-sm">Country</p>
-                <p className="text-lg">{query.country}</p>
+                <div className="flex items-center mb-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <p className="text-gray-300 text-sm font-medium">Country</p>
+                </div>
+                <p className="text-lg ml-7">{query.country}</p>
               </div>
+            </div>
+
+            <div className="mt-6 pt-4 border-t border-gray-700/40 flex justify-end">
+              <button
+                onClick={() => navigate('/')}
+                className="flex items-center text-sm text-cyan-400 hover:text-cyan-300"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 17l-5-5m0 0l5-5m-5 5h12" />
+                </svg>
+                New Search
+              </button>
             </div>
           </motion.div>
           
@@ -92,6 +125,7 @@ export default function Results() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.7 }}
+            className="max-w-6xl mx-auto"
           >
             <SupplierResults 
               suppliers={suppliers}
@@ -100,7 +134,7 @@ export default function Results() {
           </motion.div>
           
           <motion.div
-            className="mt-8 text-center"
+            className="mt-12 text-center"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 1.2 }}
@@ -112,6 +146,29 @@ export default function Results() {
             </FuturisticButton>
           </motion.div>
         </motion.div>
+        
+        {/* Back to Top floating button */}
+        <motion.button
+          className="fixed right-6 bottom-6 p-3 rounded-full bg-cyan-600 text-white shadow-lg z-50"
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ 
+            opacity: showScrollTop ? 1 : 0, 
+            scale: showScrollTop ? 1 : 0.8,
+            y: showScrollTop ? 0 : 20
+          }}
+          transition={{ duration: 0.3 }}
+          onClick={() => {
+            window.scrollTo({
+              top: 0,
+              behavior: 'smooth'
+            });
+          }}
+          aria-label="Back to top"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+          </svg>
+        </motion.button>
       </div>
     </div>
   );

@@ -5,6 +5,8 @@ import { FuturisticBackground } from './components/FuturisticBackground';
 import { FuturisticInput } from './components/FuturisticInput';
 import { FuturisticButton } from './components/FuturisticButton';
 import { FuturisticPortal } from './components/FuturisticPortal';
+import { FuturisticToggle } from './components/FuturisticToggle';
+import { FuturisticLoader } from './components/FuturisticLoader';
 
 export default function Discovery() {
   const navigate = useNavigate();
@@ -19,6 +21,10 @@ export default function Discovery() {
   // Debug mode states
   const [debugMode, setDebugMode] = useState(false);
   const [taskId, setTaskId] = useState('');
+  
+  // Loading state
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [loadingMessage, setLoadingMessage] = useState('Initializing search...');
 
   // Mock data for testing
   const mockJobResponse = {
@@ -186,9 +192,18 @@ export default function Discovery() {
       // 2. Poll for job status
       let taskCompleted = false;
       let statusData;
+      let pollCount = 0;
+      const maxPolls = 10; // Assuming max 10 polls for 100% progress
+      
+      setLoadingMessage('Searching for suppliers...');
+      setLoadingProgress(10); // Initial progress after job submission
       
       while (!taskCompleted) {
+        pollCount++;
         console.log(`Checking status for job ${jobId}...`);
+        
+        // Update progress based on poll count (10-90%)
+        setLoadingProgress(10 + Math.min(80, (pollCount / maxPolls) * 80));
         
         const statusRes = await fetch(`http://localhost:8000/discovery/tasks/${jobId}`);
         if (!statusRes.ok) throw new Error(`Status check failed: ${statusRes.statusText}`);
@@ -196,8 +211,14 @@ export default function Discovery() {
         statusData = await statusRes.json();
         console.log("Current job status:", statusData);
         
+        // Update loading message based on status
+        if (statusData.message) {
+          setLoadingMessage(statusData.message);
+        }
+        
         if (statusData.status === 'completed' || statusData.status === 'failed') {
           taskCompleted = true;
+          setLoadingProgress(90); // Nearly complete
         } else {
           // Wait 3 seconds before checking again
           await new Promise(resolve => setTimeout(resolve, 3000));
@@ -207,6 +228,7 @@ export default function Discovery() {
       // 3. Fetch results if job was successful
       if (statusData.status === 'completed') {
         console.log("Job completed successfully, fetching results...");
+        setLoadingMessage('Preparing supplier data...');
         
         const resultsRes = await fetch(`http://localhost:8000/discovery/tasks/${jobId}/results`);
         if (!resultsRes.ok) throw new Error(`Results request failed: ${resultsRes.statusText}`);
@@ -220,6 +242,12 @@ export default function Discovery() {
         // Create a summary based on the results
         const summary = `Found ${supplierData.length} suppliers for ${component} in ${country}.`;
         setSummary(summary);
+        
+        setLoadingProgress(100); // Complete
+        setLoadingMessage('Supplier data ready!');
+        
+        // Short delay before showing portal for better UX
+        await new Promise(resolve => setTimeout(resolve, 500));
         
         // Show portal animation instead of results
         setShowPortal(true);
@@ -284,6 +312,17 @@ export default function Discovery() {
       {/* Futuristic animated background */}
       <FuturisticBackground />
       
+      {/* Loading overlay */}
+      <AnimatePresence>
+        {isLoading && !showPortal && (
+          <FuturisticLoader 
+            isVisible={isLoading} 
+            message={loadingMessage}
+            progress={loadingProgress}
+          />
+        )}
+      </AnimatePresence>
+      
       {/* Portal overlay - appears when results are ready */}
       <AnimatePresence>
         {showPortal && (
@@ -339,41 +378,39 @@ export default function Discovery() {
             transition={{ duration: 0.6, delay: 0.8 }}
           >
             {/* Debug controls */}
-            <div className="mb-6">
-              <label className="text-sm text-gray-400 block mb-2">Debug Options</label>
-              <div className="flex space-x-4">
-                <label className="inline-flex items-center">
-                  <input
-                    type="radio"
-                    className="form-radio text-cyan-500"
-                    name="debugOption"
-                    checked={!useMockData && !debugMode}
-                    onChange={() => handleModeToggle('none')}
-                  />
-                  <span className="ml-2 text-sm">Live API</span>
-                </label>
-                <label className="inline-flex items-center">
-                  <input
-                    type="radio"
-                    className="form-radio text-cyan-500"
-                    name="debugOption"
-                    checked={useMockData}
-                    onChange={() => handleModeToggle('mock')}
-                  />
-                  <span className="ml-2 text-sm">Mock Data</span>
-                </label>
-                <label className="inline-flex items-center">
-                  <input
-                    type="radio"
-                    className="form-radio text-cyan-500"
-                    name="debugOption"
-                    checked={debugMode}
-                    onChange={() => handleModeToggle('debug')}
-                  />
-                  <span className="ml-2 text-sm">Task ID</span>
-                </label>
+            <motion.div 
+              className="mb-8 backdrop-blur-sm bg-black/20 p-4 rounded-lg border border-gray-700/40"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.4 }}
+            >
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-sm text-cyan-400 font-medium">Debug Options</h3>
+                <div className="text-xs text-gray-500">Advanced Settings</div>
               </div>
-            </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FuturisticToggle
+                  id="mockDataToggle"
+                  label="Use Mock Data"
+                  isChecked={useMockData}
+                  onChange={() => {
+                    handleModeToggle(useMockData ? 'none' : 'mock');
+                  }}
+                  color="purple"
+                />
+                
+                <FuturisticToggle
+                  id="debugModeToggle"
+                  label="Debug Mode (Task ID)"
+                  isChecked={debugMode}
+                  onChange={() => {
+                    handleModeToggle(debugMode ? 'none' : 'debug');
+                  }}
+                  color="cyan"
+                />
+              </div>
+            </motion.div>
             
             <form onSubmit={handleSubmit}>
               {/* Debug task ID input */}
@@ -383,8 +420,15 @@ export default function Discovery() {
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: 'auto' }}
                     exit={{ opacity: 0, height: 0 }}
-                    className="mb-6"
+                    className="mb-6 backdrop-blur-sm bg-black/20 p-4 rounded-lg border border-cyan-900/40"
                   >
+                    <div className="flex items-center mb-2">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-cyan-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+                      </svg>
+                      <h3 className="text-sm text-cyan-400 font-medium">Task ID Lookup</h3>
+                    </div>
+                    
                     <FuturisticInput
                       id="taskId"
                       label="Task ID"
@@ -392,7 +436,10 @@ export default function Discovery() {
                       onChange={(e) => setTaskId(e.target.value)}
                       placeholder="Enter existing task ID"
                     />
-                    <p className="text-xs text-cyan-400 mt-1">
+                    <p className="text-xs text-cyan-400 mt-2 flex items-center">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
                       Use this to check results of a previously submitted job
                     </p>
                   </motion.div>
