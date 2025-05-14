@@ -1,17 +1,19 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import { FuturisticBackground } from './components/FuturisticBackground';
 import { FuturisticInput } from './components/FuturisticInput';
 import { FuturisticButton } from './components/FuturisticButton';
-import { SupplierResults } from './components/SupplierResults';
+import { FuturisticPortal } from './components/FuturisticPortal';
 
 export default function Discovery() {
+  const navigate = useNavigate();
   const [component, setComponent] = useState('');
   const [country, setCountry] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [summary, setSummary] = useState<string>('');
-  const [showResults, setShowResults] = useState(false);
+  const [showPortal, setShowPortal] = useState(false);
   const [useMockData, setUseMockData] = useState(false);
 
   // Mock data for testing
@@ -102,7 +104,9 @@ export default function Discovery() {
         setSuppliers(mockResults);
         const summary = `Found ${mockResults.length} suppliers for ${component} in ${country} (MOCK DATA).`;
         setSummary(summary);
-        setShowResults(true);
+        
+        // Show portal animation instead of results
+        setShowPortal(true);
         
         return;
       }
@@ -159,7 +163,9 @@ export default function Discovery() {
         // Create a summary based on the results
         const summary = `Found ${supplierData.length} suppliers for ${component} in ${country}.`;
         setSummary(summary);
-        setShowResults(true);
+        
+        // Show portal animation instead of results
+        setShowPortal(true);
       } else {
         console.error("Job failed:", statusData.message);
       }
@@ -177,16 +183,34 @@ export default function Discovery() {
   };
 
   useEffect(() => {
-    // Reset showResults when form inputs change
-    if (showResults) {
-      setShowResults(false);
+    // Reset portal when form inputs change
+    if (showPortal) {
+      setShowPortal(false);
     }
   }, [component, country]);
+  
+  // When portal animation completes, navigate to results page
+  const handlePortalComplete = () => {
+    // Store data in sessionStorage for the results page
+    sessionStorage.setItem('suppliers', JSON.stringify(suppliers));
+    sessionStorage.setItem('summary', summary);
+    sessionStorage.setItem('query', JSON.stringify({ component, country }));
+    
+    // Navigate to results page
+    navigate('/results');
+  };
 
   return (
     <div className="min-h-screen text-white overflow-hidden">
       {/* Futuristic animated background */}
       <FuturisticBackground />
+      
+      {/* Portal overlay - appears when results are ready */}
+      <AnimatePresence>
+        {showPortal && (
+          <FuturisticPortal onAnimationComplete={handlePortalComplete} />
+        )}
+      </AnimatePresence>
       
       {/* Content overlay */}
       <div className="relative z-10 min-h-screen flex flex-col items-center justify-center px-4 py-12">
@@ -282,24 +306,6 @@ export default function Discovery() {
               </motion.div>
             </form>
           </motion.div>
-          
-          {/* Results */}
-          <AnimatePresence>
-            {showResults && (
-              <motion.div
-                key="results"
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                transition={{ duration: 0.5 }}
-              >
-                <SupplierResults 
-                  suppliers={suppliers} 
-                  summary={summary} 
-                />
-              </motion.div>
-            )}
-          </AnimatePresence>
         </motion.div>
         
         {/* Footer attribution */}
