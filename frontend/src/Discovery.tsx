@@ -15,6 +15,10 @@ export default function Discovery() {
   const [summary, setSummary] = useState<string>('');
   const [showPortal, setShowPortal] = useState(false);
   const [useMockData, setUseMockData] = useState(false);
+  
+  // Debug mode states
+  const [debugMode, setDebugMode] = useState(false);
+  const [taskId, setTaskId] = useState('');
 
   // Mock data for testing
   const mockJobResponse = {
@@ -82,6 +86,59 @@ export default function Discovery() {
   const fetchSuppliers = async (component: string, country: string) => {
     try {
       console.log("Submitting job to backend...");
+      
+      // Debug mode - directly check task status and fetch results
+      if (debugMode && taskId) {
+        console.log(`Debug mode: Checking existing task ${taskId}`);
+        
+        // Skip job submission and go straight to status check
+        let taskCompleted = false;
+        let statusData;
+        
+        while (!taskCompleted) {
+          console.log(`Checking status for job ${taskId}...`);
+          
+          const statusRes = await fetch(`http://localhost:8000/discovery/tasks/${taskId}`);
+          if (!statusRes.ok) throw new Error(`Status check failed: ${statusRes.statusText}`);
+          
+          statusData = await statusRes.json();
+          console.log("Current job status:", statusData);
+          
+          if (statusData.status === 'completed' || statusData.status === 'failed') {
+            taskCompleted = true;
+          } else {
+            // Wait 3 seconds before checking again
+            await new Promise(resolve => setTimeout(resolve, 3000));
+          }
+        }
+        
+        if (statusData.status === 'completed') {
+          console.log("Job completed, fetching results from debug task ID...");
+          
+          const resultsRes = await fetch(`http://localhost:8000/discovery/tasks/${taskId}/results`);
+          if (!resultsRes.ok) throw new Error(`Results request failed: ${resultsRes.statusText}`);
+          
+          const supplierData = await resultsRes.json();
+          console.log("Debug mode: Received results:", supplierData);
+          
+          // Update component and country from status data
+          if (statusData.component) setComponent(statusData.component);
+          if (statusData.country) setCountry(statusData.country);
+          
+          // Update state with the results
+          setSuppliers(supplierData || []);
+          
+          const summary = `Found ${supplierData.length} suppliers for ${statusData.component || component} in ${statusData.country || country} (DEBUG MODE).`;
+          setSummary(summary);
+          
+          // Show portal animation
+          setShowPortal(true);
+          return;
+        } else {
+          console.error("Debug task failed or not completed:", statusData.message);
+          return;
+        }
+      }
       
       // Use mock data or real API based on toggle
       if (useMockData) {
@@ -178,7 +235,15 @@ export default function Discovery() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    await fetchSuppliers(component, country);
+    
+    if (debugMode && taskId) {
+      // In debug mode, we use the task ID directly
+      await fetchSuppliers('', ''); // Component and country will be updated from the task data
+    } else {
+      // Normal mode
+      await fetchSuppliers(component, country);
+    }
+    
     setIsLoading(false);
   };
 
@@ -187,7 +252,21 @@ export default function Discovery() {
     if (showPortal) {
       setShowPortal(false);
     }
-  }, [component, country]);
+  }, [component, country, debugMode, taskId]);
+  
+  // Toggle between mock data and debug mode
+  const handleModeToggle = (mode: string) => {
+    if (mode === 'mock') {
+      setUseMockData(true);
+      setDebugMode(false);
+    } else if (mode === 'debug') {
+      setUseMockData(false);
+      setDebugMode(true);
+    } else {
+      setUseMockData(false);
+      setDebugMode(false);
+    }
+  };
   
   // When portal animation completes, navigate to results page
   const handlePortalComplete = () => {
@@ -259,36 +338,92 @@ export default function Discovery() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.8 }}
           >
-            {/* Mock data toggle */}
-            <div className="flex items-center justify-end mb-4">
-              <span className="text-sm text-gray-400 mr-2">Test Mode</span>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  checked={useMockData}
-                  onChange={() => setUseMockData(!useMockData)}
-                  className="sr-only peer" 
-                />
-                <div className="w-11 h-6 bg-gray-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-gray-300 after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-600"></div>
-              </label>
+            {/* Debug controls */}
+            <div className="mb-6">
+              <label className="text-sm text-gray-400 block mb-2">Debug Options</label>
+              <div className="flex space-x-4">
+                <label className="inline-flex items-center">
+                  <input
+                    type="radio"
+                    className="form-radio text-cyan-500"
+                    name="debugOption"
+                    checked={!useMockData && !debugMode}
+                    onChange={() => handleModeToggle('none')}
+                  />
+                  <span className="ml-2 text-sm">Live API</span>
+                </label>
+                <label className="inline-flex items-center">
+                  <input
+                    type="radio"
+                    className="form-radio text-cyan-500"
+                    name="debugOption"
+                    checked={useMockData}
+                    onChange={() => handleModeToggle('mock')}
+                  />
+                  <span className="ml-2 text-sm">Mock Data</span>
+                </label>
+                <label className="inline-flex items-center">
+                  <input
+                    type="radio"
+                    className="form-radio text-cyan-500"
+                    name="debugOption"
+                    checked={debugMode}
+                    onChange={() => handleModeToggle('debug')}
+                  />
+                  <span className="ml-2 text-sm">Task ID</span>
+                </label>
+              </div>
             </div>
             
             <form onSubmit={handleSubmit}>
-              <FuturisticInput
-                id="component"
-                label="Component"
-                value={component}
-                onChange={(e) => setComponent(e.target.value)}
-                placeholder="Enter component name"
-              />
+              {/* Debug task ID input */}
+              <AnimatePresence>
+                {debugMode && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="mb-6"
+                  >
+                    <FuturisticInput
+                      id="taskId"
+                      label="Task ID"
+                      value={taskId}
+                      onChange={(e) => setTaskId(e.target.value)}
+                      placeholder="Enter existing task ID"
+                    />
+                    <p className="text-xs text-cyan-400 mt-1">
+                      Use this to check results of a previously submitted job
+                    </p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
               
-              <FuturisticInput
-                id="country"
-                label="Country"
-                value={country}
-                onChange={(e) => setCountry(e.target.value)}
-                placeholder="Enter country"
-              />
+              {/* Regular form inputs - hide when in debug mode with a task ID */}
+              <AnimatePresence>
+                {(!debugMode || !taskId) && (
+                  <motion.div
+                    initial={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                  >
+                    <FuturisticInput
+                      id="component"
+                      label="Component"
+                      value={component}
+                      onChange={(e) => setComponent(e.target.value)}
+                      placeholder="Enter component name"
+                    />
+                    
+                    <FuturisticInput
+                      id="country"
+                      label="Country"
+                      value={country}
+                      onChange={(e) => setCountry(e.target.value)}
+                      placeholder="Enter country"
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
               
               <motion.div 
                 className="mt-8"
@@ -298,10 +433,10 @@ export default function Discovery() {
               >
                 <FuturisticButton 
                   type="submit" 
-                  disabled={isLoading} 
+                  disabled={isLoading || (debugMode && !taskId)} 
                   isLoading={isLoading}
                 >
-                  {isLoading ? 'Searching...' : 'Find Suppliers'}
+                  {isLoading ? 'Processing...' : debugMode ? 'Load Results' : 'Find Suppliers'}
                 </FuturisticButton>
               </motion.div>
             </form>
@@ -316,7 +451,8 @@ export default function Discovery() {
           transition={{ delay: 1.5 }}
         >
           Powered by AI Sourcing Technology
-          {useMockData && <span className="ml-1 text-cyan-500">(Test Mode)</span>}
+          {useMockData && <span className="ml-1 text-cyan-500">(Mock Mode)</span>}
+          {debugMode && <span className="ml-1 text-cyan-500">(Debug Mode)</span>}
         </motion.div>
       </div>
     </div>
