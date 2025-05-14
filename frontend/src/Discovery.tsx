@@ -15,23 +15,64 @@ export default function Discovery() {
 
   const fetchSuppliers = async (component: string, country: string) => {
     try {
-      // send initial query
-      const queryRes = await fetch('/api/discovery/query', {
+      console.log("Submitting job to backend...");
+      
+      // 1. Submit job to the async endpoint
+      const queryRes = await fetch('http://localhost:8000/discovery/query/async', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ component, country }),
       });
+      
       if (!queryRes.ok) throw new Error(`Query request failed: ${queryRes.statusText}`);
-
-      // fetch results
-      const params = new URLSearchParams({ component, country });
-      const resultsRes = await fetch(`/api/discovery/results?${params.toString()}`);
-      if (!resultsRes.ok) throw new Error(`Results request failed: ${resultsRes.statusText}`);
-
-      const resultsData = await resultsRes.json();
-      setSuppliers(resultsData.suppliers || []);
-      setSummary(resultsData.summary || '');
-      setShowResults(true);
+      
+      const jobData = await queryRes.json();
+      const jobId = jobData._id;
+      
+      console.log("Job submitted successfully:", jobData);
+      
+      // 2. Poll for job status
+      let taskCompleted = false;
+      let statusData;
+      
+      while (!taskCompleted) {
+        console.log(`Checking status for job ${jobId}...`);
+        
+        const statusRes = await fetch(`http://localhost:8000/discovery/tasks/${jobId}`);
+        if (!statusRes.ok) throw new Error(`Status check failed: ${statusRes.statusText}`);
+        
+        statusData = await statusRes.json();
+        console.log("Current job status:", statusData);
+        
+        if (statusData.status === 'completed' || statusData.status === 'failed') {
+          taskCompleted = true;
+        } else {
+          // Wait 3 seconds before checking again
+          await new Promise(resolve => setTimeout(resolve, 3000));
+        }
+      }
+      
+      // 3. Fetch results if job was successful
+      if (statusData.status === 'completed') {
+        console.log("Job completed successfully, fetching results...");
+        
+        const resultsRes = await fetch(`http://localhost:8000/discovery/tasks/${jobId}/results`);
+        if (!resultsRes.ok) throw new Error(`Results request failed: ${resultsRes.statusText}`);
+        
+        const supplierData = await resultsRes.json();
+        console.log("Received results:", supplierData);
+        
+        // Update state with the results (suppliers list)
+        setSuppliers(supplierData || []);
+        
+        // Create a summary based on the results
+        const summary = `Found ${supplierData.length} suppliers for ${component} in ${country}.`;
+        setSummary(summary);
+        setShowResults(true);
+      } else {
+        console.error("Job failed:", statusData.message);
+      }
+      
     } catch (error) {
       console.error('Failed to fetch suppliers:', error);
     }

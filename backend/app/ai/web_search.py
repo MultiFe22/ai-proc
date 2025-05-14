@@ -38,23 +38,62 @@ async def search_suppliers(component: str, country: str) -> SearchResult:
     logger.info(f"Starting supplier search for component: '{component}' in country: '{country}'")
     
     # Create prompt for a procurement specialist with detailed instructions
-    prompt = f"""I'm a senior category manager sourcing {component} suppliers in {country} for appliance manufacturing.
+    prompt = f"""Given I'm a senior category manager for a company that manufactures appliances, I need a comprehensive procurement analysis for suppliers of {component} in {country}.
 
-    Please provide a concise analysis of at least 5 diverse suppliers, including for each:
-    - Company name, website, headquarters, year founded
-    - Product offerings and quality level for {component}
-    - Manufacturing capacity and key certifications
-    - Lead times, minimum order, and major clients/industries served
-    - Market reputation, financial stability, and sustainability practices
-    - Contact info (procurement if available)
-
-    For each supplier, briefly assess:
-    - Strengths and weaknesses
-    - Risk level (1-10)
-    - Strategic fit for appliance manufacturing
-
-    Summarize in structured JSON if possible. Today's date: {datetime.now().strftime('%Y-%m-%d')}.
-    Focus on actionable procurement insights.
+    As an experienced procurement specialist, provide me with in-depth research on the top suppliers, covering:
+    
+    CORE DETAILS:
+    1. Company name
+    2. Website URL
+    3. Headquarters location and manufacturing facilities (if different)
+    4. Year founded
+    5. Company size (employees, annual revenue if available)
+    
+    PRODUCT ASSESSMENT:
+    6. Detailed product offerings related to {component}
+    7. Quality tiers (premium, mid-range, budget)
+    8. Manufacturing capabilities and capacity
+    9. Technical specifications and differentiators
+    10. R&D capabilities and innovation focus
+    
+    SUPPLY CHAIN FACTORS:
+    11. Lead times (standard and expedited if available)
+    12. Minimum order quantities
+    13. Production capacity
+    14. Geographic distribution of facilities
+    15. Certifications (ISO, industry-specific, sustainability)
+    
+    BUSINESS EVALUATION:
+    16. Market reputation and standing
+    17. Key competitive advantages
+    18. Major clients or industries served
+    19. Financial stability indicators
+    20. Sustainability and ESG practices
+    
+    PROCUREMENT INSIGHTS:
+    21. Pricing model and structure (price ranges if available)
+    22. Contract terms flexibility
+    23. Reliability assessment
+    24. Any known supply chain disruption history
+    25. Vendor relationship management approach
+    26. Total cost of ownership considerations
+    27. Shipping and logistics capabilities
+    28. Import/export considerations specific to {country}
+    29. Contact information (procurement department, if available)
+    30. Negotiation leverage points and strategies
+    
+    For each supplier, conduct a strategic assessment that includes:
+    - SWOT analysis (Strengths, Weaknesses, Opportunities, Threats)
+    - Risk assessment (1-10 scale with 10 being highest risk)
+    - Strategic fit for appliance manufacturers
+    - Comparison with industry benchmarks
+    - Potential for long-term partnership development
+    
+    Return the results in a structured JSON format if possible, but ensure all key insights are included regardless of format.
+    
+    Today's date is {datetime.now().strftime('%Y-%m-%d')}.
+    Provide at least 5 diverse suppliers if possible, with comprehensive analysis for each.
+    Ensure your assessments include both objective factors and subjective procurement insights that would help with sourcing decisions.
     """
     logger.debug("Supplier search prompt created")
     
