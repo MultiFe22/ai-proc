@@ -5,12 +5,16 @@ interface FuturisticLoaderProps {
   message?: string;
   isVisible: boolean;
   progress?: number;
+  isError?: boolean;
+  onRetry?: () => void;
 }
 
 export const FuturisticLoader = ({
   message = 'Processing your request...',
   isVisible,
-  progress
+  progress,
+  isError = false,
+  onRetry
 }: FuturisticLoaderProps) => {
   // Animation variants
   const containerVariants = {
@@ -46,17 +50,17 @@ export const FuturisticLoader = ({
       exit="hidden"
     >
       <motion.div variants={childVariants} className="mb-8">
-        <FuturisticSpinner size={60} color="cyan" />
+        <FuturisticSpinner size={60} color={isError ? "amber" : "cyan"} />
       </motion.div>
       
       <motion.div 
         variants={childVariants}
-        className="text-cyan-300 text-lg mb-4"
+        className={`text-lg mb-4 ${isError ? 'text-amber-300' : 'text-cyan-300'}`}
       >
         {message}
       </motion.div>
       
-      {typeof progress === 'number' && (
+      {!isError && typeof progress === 'number' && (
         <motion.div 
           variants={childVariants}
           className="w-64 relative h-1 bg-gray-800 rounded-full overflow-hidden"
@@ -68,6 +72,18 @@ export const FuturisticLoader = ({
             transition={{ duration: 0.5, ease: "easeInOut" }}
           />
         </motion.div>
+      )}
+      
+      {isError && onRetry && (
+        <motion.button
+          variants={childVariants}
+          className="mt-4 px-6 py-2 bg-amber-600 hover:bg-amber-500 rounded-lg text-white text-sm font-medium transition-colors"
+          onClick={onRetry}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+        >
+          Retry
+        </motion.button>
       )}
       
       {/* Futuristic dot animations in background */}

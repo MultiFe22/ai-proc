@@ -25,6 +25,7 @@ export default function Discovery() {
   // Loading state
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [loadingMessage, setLoadingMessage] = useState('Initializing search...');
+  const [isError, setIsError] = useState(false);
 
   // Mock data for testing
   const mockJobResponse = {
@@ -97,51 +98,93 @@ export default function Discovery() {
       if (debugMode && taskId) {
         console.log(`Debug mode: Checking existing task ${taskId}`);
         
+        // Show loading progress
+        setLoadingMessage(`Checking task ID: ${taskId}...`);
+        setLoadingProgress(10);
+        
         // Skip job submission and go straight to status check
         let taskCompleted = false;
         let statusData;
+        let pollCount = 0;
+        const maxPolls = 5; // Keep polls lower for debug mode
         
         while (!taskCompleted) {
+          pollCount++;
           console.log(`Checking status for job ${taskId}...`);
           
-          const statusRes = await fetch(`http://localhost:8000/discovery/tasks/${taskId}`);
-          if (!statusRes.ok) throw new Error(`Status check failed: ${statusRes.statusText}`);
+          // Update loading UI
+          setLoadingProgress(10 + Math.min(60, (pollCount / maxPolls) * 60));
           
-          statusData = await statusRes.json();
-          console.log("Current job status:", statusData);
-          
-          if (statusData.status === 'completed' || statusData.status === 'failed') {
-            taskCompleted = true;
-          } else {
-            // Wait 3 seconds before checking again
-            await new Promise(resolve => setTimeout(resolve, 3000));
+          try {
+            const statusRes = await fetch(`http://localhost:8000/discovery/tasks/${taskId}`);
+            if (!statusRes.ok) {
+              setLoadingMessage(`Error checking task: ${statusRes.statusText}`);
+              throw new Error(`Status check failed: ${statusRes.statusText}`);
+            }
+            
+            statusData = await statusRes.json();
+            console.log("Current job status:", statusData);
+            
+            // Update loading message based on status
+            if (statusData.message) {
+              setLoadingMessage(statusData.message);
+            }
+            
+            if (statusData.status === 'completed' || statusData.status === 'failed') {
+              taskCompleted = true;
+              setLoadingProgress(70);
+            } else {
+              // Wait 2 seconds before checking again in debug mode
+              await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+          } catch (error) {
+            console.error("Error fetching task status:", error);
+            setLoadingMessage(`Error: Failed to check task status. Please try again.`);
+            return; // Exit on error
           }
         }
         
         if (statusData.status === 'completed') {
           console.log("Job completed, fetching results from debug task ID...");
+          setLoadingMessage('Fetching supplier data from task...');
+          setLoadingProgress(80);
           
-          const resultsRes = await fetch(`http://localhost:8000/discovery/tasks/${taskId}/results`);
-          if (!resultsRes.ok) throw new Error(`Results request failed: ${resultsRes.statusText}`);
-          
-          const supplierData = await resultsRes.json();
-          console.log("Debug mode: Received results:", supplierData);
-          
-          // Update component and country from status data
-          if (statusData.component) setComponent(statusData.component);
-          if (statusData.country) setCountry(statusData.country);
-          
-          // Update state with the results
-          setSuppliers(supplierData || []);
-          
-          const summary = `Found ${supplierData.length} suppliers for ${statusData.component || component} in ${statusData.country || country} (DEBUG MODE).`;
-          setSummary(summary);
-          
-          // Show portal animation
-          setShowPortal(true);
+          try {
+            const resultsRes = await fetch(`http://localhost:8000/discovery/tasks/${taskId}/results`);
+            if (!resultsRes.ok) {
+              setLoadingMessage(`Error fetching results: ${resultsRes.statusText}`);
+              throw new Error(`Results request failed: ${resultsRes.statusText}`);
+            }
+            
+            const supplierData = await resultsRes.json();
+            console.log("Debug mode: Received results:", supplierData);
+            
+            // Update component and country from status data
+            if (statusData.component) setComponent(statusData.component);
+            if (statusData.country) setCountry(statusData.country);
+            
+            // Update state with the results
+            setSuppliers(supplierData || []);
+            
+            const summary = `Found ${supplierData.length} suppliers for ${statusData.component || component} in ${statusData.country || country} (DEBUG MODE).`;
+            setSummary(summary);
+            
+            setLoadingProgress(100);
+            setLoadingMessage('Data ready!');
+            
+            // Short delay before showing portal for better UX
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // Show portal animation
+            setShowPortal(true);
+          } catch (error) {
+            console.error("Error fetching results:", error);
+            setLoadingMessage(`Error: Failed to fetch results for task ${taskId}`);
+          }
           return;
         } else {
           console.error("Debug task failed or not completed:", statusData.message);
+          setLoadingMessage(`Task failed: ${statusData.message || 'Unknown error'}`);
           return;
         }
       }
@@ -151,14 +194,26 @@ export default function Discovery() {
         console.log("Using mock data (no API calls will be made)");
         
         // 1. Mock job submission
+        setLoadingMessage('Submitting mock job...');
+        setLoadingProgress(10);
         console.log("Mock job submitted successfully:", mockJobResponse);
+        await new Promise(resolve => setTimeout(resolve, 800));
         
         // 2. Mock status polling
+        setLoadingMessage('Processing request...');
+        setLoadingProgress(30);
         console.log("Simulating status polling...");
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 1200));
+        
+        setLoadingMessage('Finding suppliers for component...');
+        setLoadingProgress(50);
+        await new Promise(resolve => setTimeout(resolve, 800));
+        
         console.log("Mock job status:", mockStatusResponse);
         
         // 3. Mock results
+        setLoadingMessage('Preparing results...');
+        setLoadingProgress(80);
         console.log("Mock job completed, fetching mock results...");
         await new Promise(resolve => setTimeout(resolve, 1000));
         console.log("Received mock results:", mockResults);
@@ -167,6 +222,10 @@ export default function Discovery() {
         setSuppliers(mockResults);
         const summary = `Found ${mockResults.length} suppliers for ${component} in ${country} (MOCK DATA).`;
         setSummary(summary);
+        
+        setLoadingProgress(100);
+        setLoadingMessage('Data ready!');
+        await new Promise(resolve => setTimeout(resolve, 500));
         
         // Show portal animation instead of results
         setShowPortal(true);
@@ -257,12 +316,15 @@ export default function Discovery() {
       
     } catch (error) {
       console.error('Failed to fetch suppliers:', error);
+      setIsError(true);
+      setLoadingMessage(`Error: ${error instanceof Error ? error.message : 'Failed to fetch suppliers'}. Please try again.`);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setIsError(false); // Reset error state
     
     if (debugMode && taskId) {
       // In debug mode, we use the task ID directly
@@ -272,7 +334,20 @@ export default function Discovery() {
       await fetchSuppliers(component, country);
     }
     
-    setIsLoading(false);
+    // Only set loading to false if there's no error (in error case we want to keep the loader visible)
+    if (!isError) {
+      setIsLoading(false);
+    }
+  };
+
+  // Retry function when there's an error
+  const handleRetry = async () => {
+    setIsError(false);
+    if (debugMode && taskId) {
+      await fetchSuppliers('', '');
+    } else {
+      await fetchSuppliers(component, country);
+    }
   };
 
   useEffect(() => {
@@ -319,6 +394,8 @@ export default function Discovery() {
             isVisible={isLoading} 
             message={loadingMessage}
             progress={loadingProgress}
+            isError={isError}
+            onRetry={handleRetry}
           />
         )}
       </AnimatePresence>
